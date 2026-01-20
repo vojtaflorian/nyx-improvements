@@ -7,6 +7,8 @@
 // @author       Vojta Florian
 // @homepage     https://github.com/vojtaflorian/nyx-improvements
 // @supportURL   https://github.com/vojtaflorian/nyx-improvements/issues
+// @updateURL    https://raw.githubusercontent.com/vojtaflorian/nyx-improvements/refs/heads/main/nyx-improvements.user.js?v=@version
+// @downloadURL  https://raw.githubusercontent.com/vojtaflorian/nyx-improvements/refs/heads/main/nyx-improvements.user.js?v=@version
 // @match        https://nyx.cz/*
 // @match        https://www.nyx.cz/*
 // @exclude      https://nyx.cz/api/*
