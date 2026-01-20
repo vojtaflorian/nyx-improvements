@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Nyx.cz Improvements
 // @namespace    https://github.com/vojtaflorian/nyx-improvements
-// @version      1.2.3
+// @version      1.2.4
 // @description  Enhanced UI for nyx.cz forum - keyboard navigation, quick jump, hide read discussions
 // @description:cs Vylepšené UI pro nyx.cz fórum - klávesová navigace, quick jump, skrytí přečtených
 // @author       Vojta Florian
