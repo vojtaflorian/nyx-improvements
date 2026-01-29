@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Nyx.cz Improvements
 // @namespace    https://github.com/vojtaflorian/nyx-improvements
-// @version      1.2.6
+// @version      1.2.7
 // @description  Enhanced UI for nyx.cz forum - keyboard navigation, quick jump, hide read discussions
 // @description:cs Vylepšené UI pro nyx.cz fórum - klávesová navigace, quick jump, skrytí přečtených
 // @author       Vojta Florian
@@ -1057,6 +1057,11 @@
       this.loadingIndicator = null;
       this.scrollThreshold = 300;
       this.postSelector = ".w[data-id]";
+      // Navigation context from nyx.cz hidden form fields
+      this.navIdMin = null;
+      this.navIdMax = null;
+      this.navLastVisit = null;
+      this.navCount = null;
     }
 
     shouldActivate() {
@@ -1088,11 +1093,18 @@
         return;
       }
 
+      // Read navigation context from hidden form fields
+      this.readNavContext(document);
+
       this.logger.info("ReverseScroll: Initialized", {
         discussionId: this.discussionId,
         postsCount: posts.length,
         firstPostId: posts[0]?.dataset?.id,
         lastPostId: posts[posts.length - 1]?.dataset?.id,
+        navIdMin: this.navIdMin,
+        navIdMax: this.navIdMax,
+        navLastVisit: this.navLastVisit,
+        navCount: this.navCount,
       });
 
       this.createLoadingIndicator();
@@ -1152,6 +1164,18 @@
             `);
     }
 
+    readNavContext(doc) {
+      const arrows = doc.querySelector(".nav-arrows");
+      if (!arrows) {
+        this.logger.warn("ReverseScroll: .nav-arrows not found");
+        return;
+      }
+      this.navIdMin = arrows.querySelector('input[name="nav_id_min"]')?.value;
+      this.navIdMax = arrows.querySelector('input[name="nav_id_max"]')?.value;
+      this.navLastVisit = arrows.querySelector('input[name="nav_last_visit"]')?.value;
+      this.navCount = arrows.querySelector('input[name="nav_count"]')?.value;
+    }
+
     handleScroll() {
       const scrollTop = window.scrollY;
       if (
@@ -1178,7 +1202,11 @@
       }
 
       const firstPostId = firstPost.dataset.id;
-      this.logger.info("ReverseScroll: Loading posts newer than", firstPostId);
+      this.logger.info("ReverseScroll: Loading posts newer than", firstPostId, {
+        currentNavIdMin: this.navIdMin,
+        currentNavIdMax: this.navIdMax,
+        navCount: this.navCount,
+      });
 
       // Get form data from page
       const csrf = document.querySelector('input[name="csrf_token"]')?.value;
@@ -1194,10 +1222,14 @@
       const scrollTopBefore = window.scrollY;
 
       try {
-        // Use form POST to get newer posts (simulates clicking '<' button)
+        // Use form POST with full nav context (simulates clicking '<' button)
         const formData = new FormData();
         formData.append("csrf_token", csrf);
         formData.append("nav", "<");
+        if (this.navCount) formData.append("nav_count", this.navCount);
+        if (this.navIdMin) formData.append("nav_id_min", this.navIdMin);
+        if (this.navIdMax) formData.append("nav_id_max", this.navIdMax);
+        if (this.navLastVisit) formData.append("nav_last_visit", this.navLastVisit);
 
         const response = await fetch(`/discussion/${this.discussionId}`, {
           method: "POST",
@@ -1213,18 +1245,39 @@
         const doc = new DOMParser().parseFromString(html, "text/html");
         const newPosts = doc.querySelectorAll(".posts-container .w[data-id]");
 
-        this.logger.info(
-          "ReverseScroll: Got",
-          newPosts.length,
-          "posts from response",
-        );
+        // Update nav context from response for next pagination
+        const prevNav = {
+          idMin: this.navIdMin,
+          idMax: this.navIdMax,
+          lastVisit: this.navLastVisit,
+          count: this.navCount,
+        };
+        this.readNavContext(doc);
+        this.logger.info("ReverseScroll: Nav context updated", {
+          before: prevNav,
+          after: {
+            idMin: this.navIdMin,
+            idMax: this.navIdMax,
+            lastVisit: this.navLastVisit,
+            count: this.navCount,
+          },
+        });
+
+        this.logger.info("ReverseScroll: Got", newPosts.length, "posts from response", {
+          firstNewId: newPosts[0]?.dataset?.id,
+          lastNewId: newPosts[newPosts.length - 1]?.dataset?.id,
+        });
 
         // Check if we got the same posts (no newer available)
         const newFirstId = newPosts[0]?.dataset?.id;
         if (!newFirstId || newFirstId === firstPostId) {
           this.hasMorePosts = false;
           this.showNoMorePosts();
-          this.logger.info("ReverseScroll: Reached newest posts");
+          this.logger.info("ReverseScroll: Reached newest posts", {
+            newFirstId,
+            firstPostId,
+            match: newFirstId === firstPostId,
+          });
         } else {
           // Filter only posts that are actually newer
           const existingIds = new Set();
@@ -1237,11 +1290,12 @@
           const trulyNewPosts = Array.from(newPosts).filter(
             (p) => !existingIds.has(p.dataset.id),
           );
-          this.logger.info(
-            "ReverseScroll: Inserting",
-            trulyNewPosts.length,
-            "new posts",
-          );
+          this.logger.info("ReverseScroll: Inserting", trulyNewPosts.length, "new posts", {
+            totalFromResponse: newPosts.length,
+            duplicatesFiltered: newPosts.length - trulyNewPosts.length,
+            existingCount: existingIds.size,
+            newIds: trulyNewPosts.map((p) => p.dataset.id),
+          });
 
           if (trulyNewPosts.length === 0) {
             this.hasMorePosts = false;
