@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Nyx.cz Improvements
 // @namespace    https://github.com/vojtaflorian/nyx-improvements
-// @version      1.2.7
+// @version      1.2.8
 // @description  Enhanced UI for nyx.cz forum - keyboard navigation, quick jump, hide read discussions
 // @description:cs Vylepšené UI pro nyx.cz fórum - klávesová navigace, quick jump, skrytí přečtených
 // @author       Vojta Florian
@@ -1057,11 +1057,7 @@
       this.loadingIndicator = null;
       this.scrollThreshold = 300;
       this.postSelector = ".w[data-id]";
-      // Navigation context from nyx.cz hidden form fields
-      this.navIdMin = null;
-      this.navIdMax = null;
-      this.navLastVisit = null;
-      this.navCount = null;
+      this.navForm = null; // Reference to the actual nyx navigation form
     }
 
     shouldActivate() {
@@ -1093,18 +1089,24 @@
         return;
       }
 
-      // Read navigation context from hidden form fields
-      this.readNavContext(document);
+      // Find the actual navigation form (parent form of .nav-arrows)
+      const navArrows = document.querySelector(".nav-arrows");
+      this.navForm = navArrows?.closest("form");
+      if (!this.navForm) {
+        this.logger.warn("ReverseScroll: Navigation form not found");
+        return;
+      }
 
       this.logger.info("ReverseScroll: Initialized", {
         discussionId: this.discussionId,
         postsCount: posts.length,
         firstPostId: posts[0]?.dataset?.id,
         lastPostId: posts[posts.length - 1]?.dataset?.id,
-        navIdMin: this.navIdMin,
-        navIdMax: this.navIdMax,
-        navLastVisit: this.navLastVisit,
-        navCount: this.navCount,
+        formAction: this.navForm.action,
+        navIdMin: this.navForm.querySelector('input[name="nav_id_min"]')?.value,
+        navIdMax: this.navForm.querySelector('input[name="nav_id_max"]')?.value,
+        navLastVisit: this.navForm.querySelector('input[name="nav_last_visit"]')?.value,
+        navCount: this.navForm.querySelector('input[name="nav_count"]')?.value,
       });
 
       this.createLoadingIndicator();
@@ -1164,16 +1166,30 @@
             `);
     }
 
-    readNavContext(doc) {
-      const arrows = doc.querySelector(".nav-arrows");
-      if (!arrows) {
-        this.logger.warn("ReverseScroll: .nav-arrows not found");
-        return;
+    getNavContext() {
+      return {
+        idMin: this.navForm.querySelector('input[name="nav_id_min"]')?.value,
+        idMax: this.navForm.querySelector('input[name="nav_id_max"]')?.value,
+        lastVisit: this.navForm.querySelector('input[name="nav_last_visit"]')?.value,
+        count: this.navForm.querySelector('input[name="nav_count"]')?.value,
+      };
+    }
+
+    updateNavFromResponse(responseDoc) {
+      const fields = ["nav_id_min", "nav_id_max", "nav_last_visit", "nav_count"];
+      const responseArrows = responseDoc.querySelector(".nav-arrows");
+      if (!responseArrows) return;
+
+      for (const name of fields) {
+        const newVal = responseArrows.querySelector(`input[name="${name}"]`)?.value;
+        const domInput = this.navForm.querySelector(`input[name="${name}"]`);
+        if (newVal != null && domInput) domInput.value = newVal;
       }
-      this.navIdMin = arrows.querySelector('input[name="nav_id_min"]')?.value;
-      this.navIdMax = arrows.querySelector('input[name="nav_id_max"]')?.value;
-      this.navLastVisit = arrows.querySelector('input[name="nav_last_visit"]')?.value;
-      this.navCount = arrows.querySelector('input[name="nav_count"]')?.value;
+
+      // Also update csrf_token in case it rotates
+      const newCsrf = responseDoc.querySelector('input[name="csrf_token"]')?.value;
+      const csrfInput = this.navForm.querySelector('input[name="csrf_token"]');
+      if (newCsrf && csrfInput) csrfInput.value = newCsrf;
     }
 
     handleScroll() {
@@ -1202,36 +1218,28 @@
       }
 
       const firstPostId = firstPost.dataset.id;
-      this.logger.info("ReverseScroll: Loading posts newer than", firstPostId, {
-        currentNavIdMin: this.navIdMin,
-        currentNavIdMax: this.navIdMax,
-        navCount: this.navCount,
+      const navBefore = this.getNavContext();
+      this.logger.info("ReverseScroll: Loading newer posts", {
+        firstPostId,
+        nav: navBefore,
       });
-
-      // Get form data from page
-      const csrf = document.querySelector('input[name="csrf_token"]')?.value;
-      if (!csrf) {
-        this.logger.error("ReverseScroll: CSRF token not found");
-        this.isLoading = false;
-        this.loadingIndicator.style.display = "none";
-        return;
-      }
 
       // Remember scroll position
       const scrollHeightBefore = document.documentElement.scrollHeight;
       const scrollTopBefore = window.scrollY;
 
       try {
-        // Use form POST with full nav context (simulates clicking '<' button)
-        const formData = new FormData();
-        formData.append("csrf_token", csrf);
-        formData.append("nav", "<");
-        if (this.navCount) formData.append("nav_count", this.navCount);
-        if (this.navIdMin) formData.append("nav_id_min", this.navIdMin);
-        if (this.navIdMax) formData.append("nav_id_max", this.navIdMax);
-        if (this.navLastVisit) formData.append("nav_last_visit", this.navLastVisit);
+        // Create FormData from the actual DOM form (captures ALL fields)
+        const formData = new FormData(this.navForm);
+        // Set nav direction (submit buttons are not included by FormData constructor)
+        formData.set("nav", "<");
 
-        const response = await fetch(`/discussion/${this.discussionId}`, {
+        this.logger.info("ReverseScroll: Submitting form", {
+          action: this.navForm.action,
+          fields: Object.fromEntries(formData.entries()),
+        });
+
+        const response = await fetch(this.navForm.action, {
           method: "POST",
           body: formData,
           credentials: "include",
@@ -1245,22 +1253,12 @@
         const doc = new DOMParser().parseFromString(html, "text/html");
         const newPosts = doc.querySelectorAll(".posts-container .w[data-id]");
 
-        // Update nav context from response for next pagination
-        const prevNav = {
-          idMin: this.navIdMin,
-          idMax: this.navIdMax,
-          lastVisit: this.navLastVisit,
-          count: this.navCount,
-        };
-        this.readNavContext(doc);
+        // Update the actual DOM form hidden fields from response
+        this.updateNavFromResponse(doc);
+        const navAfter = this.getNavContext();
         this.logger.info("ReverseScroll: Nav context updated", {
-          before: prevNav,
-          after: {
-            idMin: this.navIdMin,
-            idMax: this.navIdMax,
-            lastVisit: this.navLastVisit,
-            count: this.navCount,
-          },
+          before: navBefore,
+          after: navAfter,
         });
 
         this.logger.info("ReverseScroll: Got", newPosts.length, "posts from response", {
