@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Nyx.cz Improvements
 // @namespace    https://github.com/vojtaflorian/nyx-improvements
-// @version      1.2.5
+// @version      1.2.6
 // @description  Enhanced UI for nyx.cz forum - keyboard navigation, quick jump, hide read discussions
 // @description:cs Vylepšené UI pro nyx.cz fórum - klávesová navigace, quick jump, skrytí přečtených
 // @author       Vojta Florian
@@ -1194,10 +1194,10 @@
       const scrollTopBefore = window.scrollY;
 
       try {
-        // Use form POST to get newer posts (simulates clicking '>' button)
+        // Use form POST to get newer posts (simulates clicking '<' button)
         const formData = new FormData();
         formData.append("csrf_token", csrf);
-        formData.append("nav", ">");
+        formData.append("nav", "<");
 
         const response = await fetch(`/discussion/${this.discussionId}`, {
           method: "POST",
