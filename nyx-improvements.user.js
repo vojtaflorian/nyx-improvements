@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Nyx.cz Improvements
 // @namespace    https://github.com/vojtaflorian/nyx-improvements
-// @version      1.2.8
+// @version      1.2.9
 // @description  Enhanced UI for nyx.cz forum - keyboard navigation, quick jump, hide read discussions
 // @description:cs Vylepšené UI pro nyx.cz fórum - klávesová navigace, quick jump, skrytí přečtených
 // @author       Vojta Florian
@@ -861,7 +861,6 @@
 
                 .nyx-quickjump-type {
                     flex-shrink: 0;
-                    font-size: 11px;
                     padding: 2px 8px;
                     background: rgba(255, 255, 255, 0.08);
                     border-radius: var(--nyx-radius-sm);
@@ -884,7 +883,6 @@
                     background: rgba(255, 255, 255, 0.1);
                     border-radius: var(--nyx-radius-sm);
                     font-family: inherit;
-                    font-size: 11px;
                 }
 
                 /* Responsive */
@@ -945,7 +943,8 @@
       }
 
       this.toggleBtn = document.createElement("li");
-      this.toggleBtn.className = "nyx-hide-read-toggle";
+      //   this.toggleBtn.className = "nyx-hide-read-toggle"; // Removed to fix style
+      this.toggleBtn.className = "";
       this.toggleBtn.innerHTML = `
                 <a href="#" title="Skrýt/zobrazit přečtené diskuze (bez nových příspěvků)">
                     <span class="nyx-toggle-text">přečtené</span>
@@ -984,12 +983,12 @@
 
                 .nyx-hide-read-active .nyx-toggle-icon::after {
                     content: '✓';
-                    font-size: 10px;
+
                     margin-left: 2px;
                 }
 
                 .nyx-toggle-count {
-                    font-size: 11px;
+
                     opacity: 0.7;
                 }
 
@@ -1105,7 +1104,8 @@
         formAction: this.navForm.action,
         navIdMin: this.navForm.querySelector('input[name="nav_id_min"]')?.value,
         navIdMax: this.navForm.querySelector('input[name="nav_id_max"]')?.value,
-        navLastVisit: this.navForm.querySelector('input[name="nav_last_visit"]')?.value,
+        navLastVisit: this.navForm.querySelector('input[name="nav_last_visit"]')
+          ?.value,
         navCount: this.navForm.querySelector('input[name="nav_count"]')?.value,
       });
 
@@ -1170,24 +1170,34 @@
       return {
         idMin: this.navForm.querySelector('input[name="nav_id_min"]')?.value,
         idMax: this.navForm.querySelector('input[name="nav_id_max"]')?.value,
-        lastVisit: this.navForm.querySelector('input[name="nav_last_visit"]')?.value,
+        lastVisit: this.navForm.querySelector('input[name="nav_last_visit"]')
+          ?.value,
         count: this.navForm.querySelector('input[name="nav_count"]')?.value,
       };
     }
 
     updateNavFromResponse(responseDoc) {
-      const fields = ["nav_id_min", "nav_id_max", "nav_last_visit", "nav_count"];
+      const fields = [
+        "nav_id_min",
+        "nav_id_max",
+        "nav_last_visit",
+        "nav_count",
+      ];
       const responseArrows = responseDoc.querySelector(".nav-arrows");
       if (!responseArrows) return;
 
       for (const name of fields) {
-        const newVal = responseArrows.querySelector(`input[name="${name}"]`)?.value;
+        const newVal = responseArrows.querySelector(
+          `input[name="${name}"]`,
+        )?.value;
         const domInput = this.navForm.querySelector(`input[name="${name}"]`);
         if (newVal != null && domInput) domInput.value = newVal;
       }
 
       // Also update csrf_token in case it rotates
-      const newCsrf = responseDoc.querySelector('input[name="csrf_token"]')?.value;
+      const newCsrf = responseDoc.querySelector(
+        'input[name="csrf_token"]',
+      )?.value;
       const csrfInput = this.navForm.querySelector('input[name="csrf_token"]');
       if (newCsrf && csrfInput) csrfInput.value = newCsrf;
     }
@@ -1261,10 +1271,15 @@
           after: navAfter,
         });
 
-        this.logger.info("ReverseScroll: Got", newPosts.length, "posts from response", {
-          firstNewId: newPosts[0]?.dataset?.id,
-          lastNewId: newPosts[newPosts.length - 1]?.dataset?.id,
-        });
+        this.logger.info(
+          "ReverseScroll: Got",
+          newPosts.length,
+          "posts from response",
+          {
+            firstNewId: newPosts[0]?.dataset?.id,
+            lastNewId: newPosts[newPosts.length - 1]?.dataset?.id,
+          },
+        );
 
         // Check if we got the same posts (no newer available)
         const newFirstId = newPosts[0]?.dataset?.id;
@@ -1288,12 +1303,17 @@
           const trulyNewPosts = Array.from(newPosts).filter(
             (p) => !existingIds.has(p.dataset.id),
           );
-          this.logger.info("ReverseScroll: Inserting", trulyNewPosts.length, "new posts", {
-            totalFromResponse: newPosts.length,
-            duplicatesFiltered: newPosts.length - trulyNewPosts.length,
-            existingCount: existingIds.size,
-            newIds: trulyNewPosts.map((p) => p.dataset.id),
-          });
+          this.logger.info(
+            "ReverseScroll: Inserting",
+            trulyNewPosts.length,
+            "new posts",
+            {
+              totalFromResponse: newPosts.length,
+              duplicatesFiltered: newPosts.length - trulyNewPosts.length,
+              existingCount: existingIds.size,
+              newIds: trulyNewPosts.map((p) => p.dataset.id),
+            },
+          );
 
           if (trulyNewPosts.length === 0) {
             this.hasMorePosts = false;
